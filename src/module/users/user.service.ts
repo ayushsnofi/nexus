@@ -3,73 +3,75 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
+import { Repository } from 'typeorm';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { SafeUser, UserRecord, UserRole } from './user.types';
+import { User } from './user.entity';
+import { SafeUser, UserRole } from './user.types';
 
 @Injectable()
 export class UserService {
-  private readonly users: UserRecord[] = [];
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
 
   async create(createUserDto: CreateUserDto): Promise<SafeUser> {
-    const existingUser = this.findByEmail(createUserDto.email);
+    const existingUser = await this.findByEmail(createUserDto.email);
     if (existingUser) {
       throw new ConflictException('Email is already registered');
     }
 
-    const now = new Date().toISOString();
     const passwordHash = await bcrypt.hash(createUserDto.password, 10);
 
-    const user: UserRecord = {
-      id: randomUUID(),
+    const user = this.userRepository.create({
       email: createUserDto.email.toLowerCase(),
       name: createUserDto.name,
       passwordHash,
       role: createUserDto.role ?? UserRole.USER,
       isActive: true,
-      createdAt: now,
-      updatedAt: now,
-      lastLoginAt: null,
-    };
+    });
 
-    this.users.push(user);
-    return this.sanitizeUser(user);
+    const saved = await this.userRepository.save(user);
+    return this.toSafeUser(saved);
   }
 
-  list(listUsersDto: ListUsersDto) {
+  async list(listUsersDto: ListUsersDto) {
     const page = listUsersDto.page ?? 1;
     const limit = listUsersDto.limit ?? 10;
 
-    let data = [...this.users];
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .orderBy('user.createdAt', 'DESC');
 
     if (listUsersDto.search) {
-      const query = listUsersDto.search.toLowerCase();
-      data = data.filter(
-        (user) =>
-          user.name.toLowerCase().includes(query) ||
-          user.email.toLowerCase().includes(query),
+      const query = `%${listUsersDto.search.toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(user.name) LIKE :query OR LOWER(user.email) LIKE :query)',
+        { query },
       );
     }
 
     if (listUsersDto.role) {
-      data = data.filter((user) => user.role === listUsersDto.role);
+      qb.andWhere('user.role = :role', { role: listUsersDto.role });
     }
 
     if (listUsersDto.isActive !== undefined) {
-      data = data.filter((user) => user.isActive === listUsersDto.isActive);
+      qb.andWhere('user.isActive = :isActive', {
+        isActive: listUsersDto.isActive,
+      });
     }
 
-    data.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-
-    const total = data.length;
-    const start = (page - 1) * limit;
-    const paginatedUsers = data.slice(start, start + limit).map((user) => this.sanitizeUser(user));
+    const [data, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
 
     return {
-      data: paginatedUsers,
+      data: data.map((u) => this.toSafeUser(u)),
       meta: {
         total,
         page,
@@ -79,79 +81,70 @@ export class UserService {
     };
   }
 
-  getById(id: string): SafeUser {
-    const user = this.users.find((item) => item.id === id);
+  async getById(id: string): Promise<SafeUser> {
+    const user = await this.userRepository.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-
-    return this.sanitizeUser(user);
+    return this.toSafeUser(user);
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<SafeUser> {
-    const user = this.users.find((item) => item.id === id);
+    const user = await this.userRepository.findOne({ where: { id } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    if (updateUserDto.name) {
-      user.name = updateUserDto.name;
-    }
-
-    if (updateUserDto.role) {
-      user.role = updateUserDto.role;
-    }
-
-    if (updateUserDto.isActive !== undefined) {
+    if (updateUserDto.name) user.name = updateUserDto.name;
+    if (updateUserDto.role) user.role = updateUserDto.role;
+    if (updateUserDto.isActive !== undefined)
       user.isActive = updateUserDto.isActive;
-    }
 
     if (updateUserDto.password) {
       user.passwordHash = await bcrypt.hash(updateUserDto.password, 10);
     }
 
-    user.updatedAt = new Date().toISOString();
-    return this.sanitizeUser(user);
+    const saved = await this.userRepository.save(user);
+    return this.toSafeUser(saved);
   }
 
-  remove(id: string) {
-    const index = this.users.findIndex((item) => item.id === id);
-    if (index === -1) {
+  async remove(id: string): Promise<SafeUser> {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) {
       throw new NotFoundException('User not found');
     }
-
-    const [deletedUser] = this.users.splice(index, 1);
-    return this.sanitizeUser(deletedUser);
+    const safeUser = this.toSafeUser(user);
+    await this.userRepository.remove(user);
+    return safeUser;
   }
 
-  findByEmail(email: string): UserRecord | undefined {
+  async findByEmail(email: string): Promise<User | null> {
     const normalizedEmail = email.toLowerCase();
-    return this.users.find((user) => user.email === normalizedEmail);
+    return this.userRepository.findOne({
+      where: { email: normalizedEmail },
+    });
   }
 
-  findById(id: string): UserRecord | undefined {
-    return this.users.find((user) => user.id === id);
+  async findById(id: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { id } });
   }
 
-  markLogin(id: string): void {
-    const user = this.findById(id);
-    if (!user) {
-      return;
-    }
-    user.lastLoginAt = new Date().toISOString();
-    user.updatedAt = new Date().toISOString();
+  async markLogin(id: string): Promise<void> {
+    await this.userRepository.update(id, {
+      lastLoginAt: new Date(),
+    });
   }
 
-  sanitizeUser(user: UserRecord): SafeUser {
+  toSafeUser(user: User): SafeUser {
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
       isActive: user.isActive,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt,
-      lastLoginAt: user.lastLoginAt,
+      createdAt: user.createdAt.toISOString(),
+      updatedAt: user.updatedAt.toISOString(),
+      lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
     };
   }
 }

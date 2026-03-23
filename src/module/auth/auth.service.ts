@@ -27,7 +27,7 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const user = this.userService.findByEmail(loginDto.email);
+    const user = await this.userService.findByEmail(loginDto.email);
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -40,11 +40,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    this.userService.markLogin(user.id);
+    await this.userService.markLogin(user.id);
     const token = await this.generateAccessToken(user.id, user.email, user.role);
 
     return {
-      user: this.userService.sanitizeUser(user),
+      user: this.userService.toSafeUser(user),
       ...token,
     };
   }

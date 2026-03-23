@@ -3,18 +3,6 @@ export enum UserRole {
   USER = 'user',
 }
 
-export interface UserRecord {
-  id: string;
-  email: string;
-  name: string;
-  passwordHash: string;
-  role: UserRole;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  lastLoginAt: string | null;
-}
-
 export interface SafeUser {
   id: string;
   email: string;
