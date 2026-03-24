@@ -6,10 +6,12 @@ import { AppService } from './app.service';
 import { ChatGateway } from './chat.gateway';
 import { AuthModule } from './module/auth/auth.module';
 import { UsersModule } from './module/users/users.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    RedisModule,
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST ?? 'localhost',
