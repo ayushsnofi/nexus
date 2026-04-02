@@ -14,6 +14,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { ListUsersDto } from './dto/list-users.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserService } from './user.service';
+import { RateLimiterGaurd } from 'src/common/gaurds/rateLimiter.gaurd';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -21,14 +22,16 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
+  @UseGuards(RateLimiterGaurd)
   create(@Body() createUserDto: CreateUserDto) {
     return this.userService.create(createUserDto);
   }
 
-  @Get()
-  list(@Query() listUsersDto: ListUsersDto) {
+    @Get()
+    @UseGuards(RateLimiterGaurd)
+    list(@Query() listUsersDto: ListUsersDto) {
     return this.userService.list(listUsersDto);
-  }
+    }
 
   @Get(':id')
   getById(@Param('id') id: string) {

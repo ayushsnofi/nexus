@@ -19,7 +19,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload): Promise<AuthUser> {
-    const isRevoked = this.authService.isTokenRevoked(payload.jti);
+    const isRevoked = await this.authService.isTokenRevoked(payload.jti);
     if (isRevoked) {
       throw new UnauthorizedException('Token has been revoked');
     }

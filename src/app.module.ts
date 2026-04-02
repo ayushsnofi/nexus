@@ -5,8 +5,10 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ChatGateway } from './chat.gateway';
 import { AuthModule } from './module/auth/auth.module';
+import { ChatModule } from './module/chat/chat.module';
 import { UsersModule } from './module/users/users.module';
 import { RedisModule } from './redis/redis.module';
+import { RateLimiterGaurd } from './common/gaurds/rateLimiter.gaurd';
 
 @Module({
   imports: [
@@ -24,8 +26,9 @@ import { RedisModule } from './redis/redis.module';
     }),
     AuthModule,
     UsersModule,
+    ChatModule,
   ],
   controllers: [AppController],
-  providers: [AppService, ChatGateway],
+  providers: [AppService, ChatGateway, RateLimiterGaurd],
 })
 export class AppModule {}
