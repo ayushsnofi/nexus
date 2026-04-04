@@ -62,6 +62,12 @@ export class AuthService {
     return revoked === 'true';
   }
 
+  verifyToken(token: string): JwtPayload {
+    return this.jwtService.verify<JwtPayload>(token, {
+      secret: process.env.JWT_SECRET ?? 'change-me-in-production',
+    });
+  }
+
   private async generateAccessToken(
     userId: string,
     email: string,

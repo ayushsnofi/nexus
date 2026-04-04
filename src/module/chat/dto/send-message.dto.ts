@@ -9,9 +9,5 @@ export class SendMessageDto{
     @IsString()
     content: string;
 
-    @IsNotEmpty()
-    @IsString()
-    senderId: string;
-
     
 }

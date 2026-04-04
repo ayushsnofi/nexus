@@ -11,6 +11,7 @@ import { createClient, RedisClientType, SetOptions } from 'redis';
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private client: RedisClientType;
+  private subscriber: RedisClientType;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -25,10 +26,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(`Redis client error: ${err.message}`),
     );
     await this.client.connect();
+    this.subscriber = this.client.duplicate();
+    this.subscriber.on('error', (err) =>
+      this.logger.error(`Redis subscriber error: ${err.message}`),
+    );
+    await this.subscriber.connect();
     this.logger.log('Redis connected');
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.subscriber?.isOpen) {
+      await this.subscriber.quit();
+    }
     if (this.client?.isOpen) {
       await this.client.quit();
     }
@@ -71,4 +80,22 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.client.expire(key, seconds);
   }
 
+  async publish(channel: string, payload: unknown): Promise<void> {
+    const message =
+      typeof payload === 'string' ? payload : JSON.stringify(payload);
+    await this.client.publish(channel, message);
+  }
+
+  async subscribe(
+    channel: string,
+    handler: (data: Record<string, unknown>) => void,
+  ): Promise<void> {
+    await this.subscriber.subscribe(channel, (message) => {
+      try {
+        handler(JSON.parse(message) as Record<string, unknown>);
+      } catch {
+        this.logger.warn(`Invalid JSON on Redis channel ${channel}`);
+      }
+    });
+  }
 }
